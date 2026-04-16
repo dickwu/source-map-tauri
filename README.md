@@ -64,6 +64,12 @@ The current CI runs on Linux and macOS.
 
 ## Install
 
+Install from crates.io:
+
+```bash
+cargo install source-map-tauri
+```
+
 Install from Homebrew:
 
 ```bash
