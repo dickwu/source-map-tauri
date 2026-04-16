@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-upload"
+description = "Allows audit uploads."
+commands.allow = ["upload"]

@@ -1,0 +1,13 @@
+{
+  "name": "tauri-custom-plugin-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@hospital/plugin-audit": "workspace:*",
+    "@tauri-apps/api": "^2.0.0",
+    "react": "^19.0.0"
+  }
+}

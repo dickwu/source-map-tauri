@@ -1,0 +1,8 @@
+[package]
+name = "realish-inline-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = "2"
+serde = { version = "1", features = ["derive"] }

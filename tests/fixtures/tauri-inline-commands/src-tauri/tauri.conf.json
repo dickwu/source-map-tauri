@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Realish Fixture",
+  "identifier": "com.example.realish",
+  "app": {
+    "windows": [
+      {
+        "title": "Fixture"
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "identifier": "default-capability",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
