@@ -8,6 +8,7 @@ It is built for source-code indexing, not runtime inspection. The scanner walks 
 
 - Scans Tauri repositories into `artifacts.ndjson`, `edges.ndjson`, and `warnings.ndjson`
 - Extracts frontend components, hooks, tests, Tauri commands, plugin metadata, permissions, and capability documents
+- Extracts frontend HTTP wrappers, transports, endpoints, and canonical endpoint flows such as `LoginModal -> useLogin -> usePostApi -> POST /auth/login`
 - Applies redaction, PHI detection, and risk tagging before documents are written
 - Emits Meilisearch settings and project metadata so the bundle can be uploaded or reindexed
 - Validates bundle structure, document ids, and command-to-permission evidence
@@ -38,6 +39,7 @@ Generic text search does not preserve the relationships a Tauri codebase actuall
 
 - frontend component -> hook
 - hook -> invoke call
+- component -> API wrapper -> transport -> backend route
 - invoke call -> Rust command
 - command -> permission
 - permission -> effective capability
@@ -163,6 +165,51 @@ source-map-tauri reindex --root /path/to/tauri-app --repo my-tauri-app --wait
 source-map-tauri search --query "patient upload permission"
 ```
 
+For frontend endpoint queries, use the normalized path:
+
+```bash
+source-map-tauri search --query "auth/login"
+```
+
+Endpoint-shaped queries are normalized to `/auth/login` and automatically filtered to
+`frontend_http_flow`. That means the query returns one canonical flow document per repo
+instead of separate hits for the wrapper, transport, and every callsite.
+
+Example flow shape:
+
+```json
+{
+  "kind": "frontend_http_flow",
+  "display_name": "POST /auth/login",
+  "normalized_path": "/auth/login",
+  "primary_component": "LoginModal",
+  "primary_wrapper": "useLogin",
+  "primary_transport": "usePostApi",
+  "primary_flow": [
+    {
+      "kind": "frontend_component",
+      "name": "LoginModal",
+      "path": "src/components/extra/LoginModal.tsx"
+    },
+    {
+      "kind": "frontend_api_wrapper",
+      "name": "useLogin",
+      "path": "src/utils/apis/auth.ts"
+    },
+    {
+      "kind": "frontend_transport",
+      "name": "usePostApi",
+      "path": "src/utils/apis/api.ts"
+    },
+    {
+      "kind": "frontend_http_endpoint",
+      "method": "POST",
+      "path": "/auth/login"
+    }
+  ]
+}
+```
+
 ### 8. Print JSON schema hints
 
 ```bash
@@ -201,6 +248,37 @@ Global flags:
 - `--redact-secrets`
 - `--detect-phi`
 - `--fail-on-phi`
+
+## Frontend HTTP flow search
+
+The frontend scanner now materializes one endpoint flow per `repo + method + normalized_path`.
+
+For code shaped like:
+
+```ts
+// src/components/extra/LoginModal.tsx
+const { refetch: attemptLogin } = useLogin(email, password, false)
+await attemptLogin()
+
+// src/utils/apis/auth.ts
+export const useLogin = (email: string, password: string, enabled: boolean) =>
+  usePostApi('auth/login', { email, password }, false, enabled)
+
+// src/utils/apis/api.ts
+export const usePostApi = (path: string, data: unknown, ...) =>
+  tauriFetch(`${API_URL}/${path}`, { method: 'POST', body: JSON.stringify(data) })
+```
+
+`source-map-tauri` emits:
+
+- `frontend_api_wrapper` for `useLogin`
+- `frontend_transport` for `usePostApi`
+- `frontend_http_endpoint` for `POST /auth/login`
+- one aggregated `frontend_http_flow` for `/auth/login`
+
+If the same route is used from multiple places, the index still emits one
+`frontend_http_flow` document. Extra callsites are collapsed into metadata like
+`caller_count`, `alternate_components`, and `source_paths`.
 
 ## Acceptance path
 

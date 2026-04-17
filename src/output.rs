@@ -81,6 +81,8 @@ pub fn default_meili_settings() -> Value {
     json!({
         "searchableAttributes": [
             "name",
+            "normalized_path",
+            "http_method",
             "invoke_key",
             "command_name",
             "plugin_name",
@@ -103,6 +105,10 @@ pub fn default_meili_settings() -> Value {
             "related_symbols",
             "related_php_symbols",
             "related_tests",
+            "primary_component",
+            "primary_wrapper",
+            "primary_transport",
+            "source_paths",
             "risk_reasons",
             "tags",
             "comments",
@@ -118,6 +124,8 @@ pub fn default_meili_settings() -> Value {
             "risk_level",
             "contains_phi",
             "has_related_tests",
+            "normalized_path",
+            "http_method",
             "command_name",
             "invoke_key",
             "plugin_name",

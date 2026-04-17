@@ -149,3 +149,74 @@ fn scan_realish_inline_command_fixture() {
     validate.args(["validate", "--input"]).arg(out.path());
     validate.assert().success();
 }
+
+#[test]
+fn scan_frontend_http_flow_fixture() {
+    let temp = assert_fs::TempDir::new().expect("temp dir");
+    let out = temp.child("out");
+
+    let mut scan = binary();
+    scan.args([
+        "scan",
+        "--root",
+        "tests/fixtures/frontend-http-flow",
+        "--repo",
+        "httpflow",
+        "--out",
+    ])
+    .arg(out.path())
+    .assert()
+    .success();
+
+    let artifacts =
+        fs::read_to_string(out.child("artifacts.ndjson").path()).expect("read artifacts");
+    let docs: Vec<Value> = artifacts
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("valid json"))
+        .collect();
+
+    assert!(docs.iter().any(|doc| {
+        doc.get("kind").and_then(Value::as_str) == Some("frontend_api_wrapper")
+            && doc.get("name").and_then(Value::as_str) == Some("useLogin")
+            && doc.get("normalized_path").and_then(Value::as_str) == Some("/auth/login")
+    }));
+    assert!(docs.iter().any(|doc| {
+        doc.get("kind").and_then(Value::as_str) == Some("frontend_transport")
+            && doc.get("name").and_then(Value::as_str) == Some("usePostApi")
+    }));
+    assert!(docs.iter().any(|doc| {
+        doc.get("kind").and_then(Value::as_str) == Some("frontend_http_endpoint")
+            && doc.get("name").and_then(Value::as_str) == Some("/auth/login")
+    }));
+
+    let flow_docs: Vec<&Value> = docs
+        .iter()
+        .filter(|doc| {
+            doc.get("kind").and_then(Value::as_str) == Some("frontend_http_flow")
+                && doc.get("normalized_path").and_then(Value::as_str) == Some("/auth/login")
+        })
+        .collect();
+
+    assert_eq!(
+        flow_docs.len(),
+        1,
+        "expected exactly one flow for /auth/login"
+    );
+    let flow = flow_docs[0];
+    assert_eq!(
+        flow.get("primary_component").and_then(Value::as_str),
+        Some("LoginModal")
+    );
+    assert_eq!(
+        flow.get("primary_wrapper").and_then(Value::as_str),
+        Some("useLogin")
+    );
+    assert_eq!(
+        flow.get("primary_transport").and_then(Value::as_str),
+        Some("usePostApi")
+    );
+
+    let mut validate = binary();
+    validate.args(["validate", "--input"]).arg(out.path());
+    validate.assert().success();
+}

@@ -174,17 +174,40 @@ pub fn search(
     let connection = config.resolve_meili(meili_url, meili_key, true)?;
     let client = MeiliClient::new(connection)?;
     let index_name = index.unwrap_or(&config.file.meilisearch.index);
+    let effective_filter = filter.map(str::to_owned).or_else(|| {
+        normalized_http_endpoint_query(query)
+            .map(|path| format!("kind = frontend_http_flow AND normalized_path = \"{path}\""))
+    });
     let response = client.search(
         index_name,
         json!({
             "q": query,
-            "filter": filter,
+            "filter": effective_filter,
             "limit": limit,
             "showRankingScore": true
         }),
     )?;
     println!("{}", serde_json::to_string_pretty(&response)?);
     Ok(())
+}
+
+fn normalized_http_endpoint_query(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() || trimmed.contains(' ') || trimmed.contains('.') {
+        return None;
+    }
+    let valid = trimmed.contains('/')
+        && trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '_' | '-'));
+    if !valid {
+        return None;
+    }
+    if trimmed.starts_with('/') {
+        Some(trimmed.to_owned())
+    } else {
+        Some(format!("/{trimmed}"))
+    }
 }
 
 pub fn doctor_health(config: &ResolvedConfig) -> Option<Value> {
@@ -223,4 +246,28 @@ fn write_project_info(parent: Option<&Path>, project_info: &ProjectInfo) -> Resu
     fs::write(&path, serde_json::to_vec_pretty(project_info)?)
         .with_context(|| format!("write {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_http_endpoint_query;
+
+    #[test]
+    fn detects_endpoint_style_queries() {
+        assert_eq!(
+            normalized_http_endpoint_query("auth/login").as_deref(),
+            Some("/auth/login")
+        );
+        assert_eq!(
+            normalized_http_endpoint_query("/auth/check-token").as_deref(),
+            Some("/auth/check-token")
+        );
+        assert!(normalized_http_endpoint_query("login").is_none());
+        assert!(normalized_http_endpoint_query("src/app/page.tsx").is_none());
+        assert!(normalized_http_endpoint_query("auth/login button").is_none());
+        assert_eq!(
+            normalized_http_endpoint_query("auth/login").as_deref(),
+            Some("/auth/login")
+        );
+    }
 }

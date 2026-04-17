@@ -1,4 +1,5 @@
 pub mod hooks;
+pub mod http;
 pub mod swc;
 pub mod tauri_calls;
 pub mod tests;
@@ -24,6 +25,7 @@ pub fn extract(
 
     for path in &discovery.frontend_files {
         let text = std::fs::read_to_string(path)?;
+        artifacts.extend(http::extract_http_artifacts(config, path, &text));
         match swc::extract_file(config, path, &text, &known_hooks, false) {
             Ok((file_artifacts, file_warnings)) => {
                 artifacts.extend(file_artifacts);
