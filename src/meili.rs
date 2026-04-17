@@ -174,10 +174,9 @@ pub fn search(
     let connection = config.resolve_meili(meili_url, meili_key, true)?;
     let client = MeiliClient::new(connection)?;
     let index_name = index.unwrap_or(&config.file.meilisearch.index);
-    let effective_filter = filter.map(str::to_owned).or_else(|| {
-        normalized_http_endpoint_query(query)
-            .map(|path| format!("kind = frontend_http_flow AND normalized_path = \"{path}\""))
-    });
+    let effective_filter = filter
+        .map(str::to_owned)
+        .or_else(|| endpoint_flow_filter(query));
     let response = client.search(
         index_name,
         json!({
@@ -208,6 +207,14 @@ fn normalized_http_endpoint_query(query: &str) -> Option<String> {
     } else {
         Some(format!("/{trimmed}"))
     }
+}
+
+fn endpoint_flow_filter(query: &str) -> Option<String> {
+    let path = normalized_http_endpoint_query(query)?;
+    let escaped = path.replace('"', "\\\"");
+    Some(format!(
+        "kind = frontend_http_flow AND (normalized_path = \"{escaped}\" OR path_aliases = \"{escaped}\")"
+    ))
 }
 
 pub fn doctor_health(config: &ResolvedConfig) -> Option<Value> {
@@ -250,7 +257,7 @@ fn write_project_info(parent: Option<&Path>, project_info: &ProjectInfo) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use super::normalized_http_endpoint_query;
+    use super::{endpoint_flow_filter, normalized_http_endpoint_query};
 
     #[test]
     fn detects_endpoint_style_queries() {
@@ -268,6 +275,12 @@ mod tests {
         assert_eq!(
             normalized_http_endpoint_query("auth/login").as_deref(),
             Some("/auth/login")
+        );
+        assert_eq!(
+            endpoint_flow_filter("/home/search").as_deref(),
+            Some(
+                "kind = frontend_http_flow AND (normalized_path = \"/home/search\" OR path_aliases = \"/home/search\")"
+            )
         );
     }
 }

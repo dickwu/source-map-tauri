@@ -290,7 +290,7 @@ fn find_matching_brace(text: &str, open_index: usize) -> Option<usize> {
 
 fn wrapper_transport_call(body: &str) -> Option<(&'static str, &'static str, String)> {
     let call_re = Regex::new(
-        r#"\b(usePostApi|usePostMutation|usePostUploadMutation|postApi)\s*\(\s*["']([^"']+)["']"#,
+        r#"\b(usePostApi|usePostMutation|usePostUploadMutation|postApi)\s*(?:<[^()]+>)?\s*\(\s*["']([^"']+)["']"#,
     )
     .expect("valid regex");
     let capture = call_re.captures(body)?;

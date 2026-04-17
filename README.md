@@ -165,15 +165,20 @@ source-map-tauri reindex --root /path/to/tauri-app --repo my-tauri-app --wait
 source-map-tauri search --query "patient upload permission"
 ```
 
-For frontend endpoint queries, use the normalized path:
+For frontend endpoint queries, use the path you care about:
 
 ```bash
 source-map-tauri search --query "auth/login"
+source-map-tauri search --query "/home/search"
 ```
 
-Endpoint-shaped queries are normalized to `/auth/login` and automatically filtered to
-`frontend_http_flow`. That means the query returns one canonical flow document per repo
-instead of separate hits for the wrapper, transport, and every callsite.
+Endpoint-shaped queries are normalized and automatically filtered to
+`frontend_http_flow`. Exact endpoint paths like `auth/login` resolve to
+`/auth/login`. Suffix path queries like `/home/search` can resolve to a longer
+canonical endpoint such as `/appointment/home/search` when that suffix is stored
+as a path alias on the flow document. The query still returns one canonical flow
+document per repo instead of separate hits for the wrapper, transport, and every
+callsite.
 
 Example flow shape:
 
@@ -276,9 +281,43 @@ export const usePostApi = (path: string, data: unknown, ...) =>
 - `frontend_http_endpoint` for `POST /auth/login`
 - one aggregated `frontend_http_flow` for `/auth/login`
 
+Generic wrappers are also indexed. For example:
+
+```ts
+// src/utils/apis/appointment.ts
+export const useSearchPatientMutation = () => {
+  return usePostMutation<PatientSearchResponse>('appointment/home/search', true)
+}
+```
+
+This emits:
+
+- `frontend_api_wrapper` for `useSearchPatientMutation`
+- `frontend_transport` for `usePostMutation`
+- `frontend_http_endpoint` for `POST /appointment/home/search`
+- one aggregated `frontend_http_flow` for `/appointment/home/search`
+
 If the same route is used from multiple places, the index still emits one
 `frontend_http_flow` document. Extra callsites are collapsed into metadata like
 `caller_count`, `alternate_components`, and `source_paths`.
+
+Path aliases are stored for suffix lookups. That means a query like:
+
+```bash
+source-map-tauri search --query "/home/search"
+```
+
+can return the canonical flow for:
+
+```text
+POST /appointment/home/search
+```
+
+with a primary flow like:
+
+```text
+PatientSearchContent -> useSearchPatientMutation -> usePostMutation -> POST /appointment/home/search
+```
 
 ## Acceptance path
 

@@ -16,3 +16,13 @@ export const usePostApi = <T = any>(
     },
   }) as Promise<T>
 }
+
+export const usePostMutation = <T = any>(path: string, _isAuth = false) => {
+  return tauriFetch(`${API_URL}/${path}`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  }) as Promise<T>
+}

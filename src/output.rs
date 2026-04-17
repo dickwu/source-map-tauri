@@ -82,6 +82,7 @@ pub fn default_meili_settings() -> Value {
         "searchableAttributes": [
             "name",
             "normalized_path",
+            "path_aliases",
             "http_method",
             "invoke_key",
             "command_name",
@@ -125,6 +126,7 @@ pub fn default_meili_settings() -> Value {
             "contains_phi",
             "has_related_tests",
             "normalized_path",
+            "path_aliases",
             "http_method",
             "command_name",
             "invoke_key",

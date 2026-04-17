@@ -412,6 +412,15 @@ fn flow_artifact(
         Value::String(endpoint.normalized_path.clone()),
     );
     doc.data.insert(
+        "path_aliases".to_owned(),
+        Value::Array(
+            path_aliases(&endpoint.normalized_path)
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    doc.data.insert(
         "primary_component".to_owned(),
         best.component_name
             .clone()
@@ -548,6 +557,15 @@ fn endpoint_artifact(
         Value::String(normalized_path.to_owned()),
     );
     doc.data.insert(
+        "path_aliases".to_owned(),
+        Value::Array(
+            path_aliases(normalized_path)
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    doc.data.insert(
         "endpoint_key".to_owned(),
         Value::String(format!("{method} {normalized_path}")),
     );
@@ -557,6 +575,23 @@ fn endpoint_artifact(
 
 fn endpoint_key(method: &str, normalized_path: &str) -> String {
     format!("{method} {normalized_path}")
+}
+
+fn path_aliases(normalized_path: &str) -> Vec<String> {
+    let segments: Vec<&str> = normalized_path
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let mut aliases = BTreeSet::new();
+    if segments.len() < 2 {
+        return aliases.into_iter().collect();
+    }
+    for start in 1..segments.len().saturating_sub(1) {
+        let alias = format!("/{}", segments[start..].join("/"));
+        aliases.insert(alias);
+    }
+    aliases.into_iter().collect()
 }
 
 impl EndpointRecord {

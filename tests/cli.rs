@@ -216,6 +216,41 @@ fn scan_frontend_http_flow_fixture() {
         Some("usePostApi")
     );
 
+    let suffix_flow_docs: Vec<&Value> = docs
+        .iter()
+        .filter(|doc| {
+            doc.get("kind").and_then(Value::as_str) == Some("frontend_http_flow")
+                && doc.get("normalized_path").and_then(Value::as_str)
+                    == Some("/appointment/home/search")
+        })
+        .collect();
+
+    assert_eq!(
+        suffix_flow_docs.len(),
+        1,
+        "expected exactly one flow for /appointment/home/search"
+    );
+    let suffix_flow = suffix_flow_docs[0];
+    assert_eq!(
+        suffix_flow.get("primary_wrapper").and_then(Value::as_str),
+        Some("useSearchPatientMutation")
+    );
+    assert_eq!(
+        suffix_flow.get("primary_transport").and_then(Value::as_str),
+        Some("usePostMutation")
+    );
+    assert_eq!(
+        suffix_flow.get("caller_count").and_then(Value::as_u64),
+        Some(2)
+    );
+    let path_aliases = suffix_flow
+        .get("path_aliases")
+        .and_then(Value::as_array)
+        .expect("path aliases");
+    assert!(path_aliases
+        .iter()
+        .any(|value| value.as_str() == Some("/home/search")));
+
     let mut validate = binary();
     validate.args(["validate", "--input"]).arg(out.path());
     validate.assert().success();
