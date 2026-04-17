@@ -241,7 +241,7 @@ fn scan_frontend_http_flow_fixture() {
     );
     assert_eq!(
         suffix_flow.get("caller_count").and_then(Value::as_u64),
-        Some(2)
+        Some(4)
     );
     let path_aliases = suffix_flow
         .get("path_aliases")
@@ -250,6 +250,25 @@ fn scan_frontend_http_flow_fixture() {
     assert!(path_aliases
         .iter()
         .any(|value| value.as_str() == Some("/home/search")));
+    let alternate_components = suffix_flow
+        .get("alternate_components")
+        .and_then(Value::as_array)
+        .expect("alternate components");
+    assert!(alternate_components
+        .iter()
+        .any(|value| value.as_str() == Some("PatientSearch")));
+    assert!(alternate_components
+        .iter()
+        .any(|value| value.as_str() == Some("SearchDefaultPanel")));
+    assert!(
+        suffix_flow.get("primary_component").and_then(Value::as_str) == Some("SearchWithHelper")
+            || alternate_components
+                .iter()
+                .any(|value| value.as_str() == Some("SearchWithHelper"))
+    );
+    assert!(!alternate_components
+        .iter()
+        .any(|value| value.as_str() == Some("useSearchHelper")));
 
     let mut validate = binary();
     validate.args(["validate", "--input"]).arg(out.path());

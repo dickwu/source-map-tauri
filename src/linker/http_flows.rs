@@ -21,6 +21,15 @@ struct FlowCandidate {
 }
 
 #[derive(Clone)]
+struct CallerEvidence {
+    component_name: Option<String>,
+    component_path: Option<String>,
+    line_start: Option<u32>,
+    source_paths: BTreeSet<String>,
+    related_tests: BTreeSet<String>,
+}
+
+#[derive(Clone)]
 struct EndpointRecord {
     method: String,
     normalized_path: String,
@@ -215,14 +224,11 @@ fn flow_candidates_for_endpoint(
             .get("transport_name")
             .and_then(Value::as_str)
             .and_then(|name| transport_by_name.get(name).copied());
-        let callers: Vec<&ArtifactDoc> = artifacts
-            .iter()
-            .filter(|artifact| {
-                artifact.kind == "frontend_hook_use"
-                    && artifact.data.get("hook_def_name").and_then(Value::as_str)
-                        == wrapper.name.as_deref()
-            })
-            .collect();
+        let callers = wrapper
+            .name
+            .as_deref()
+            .map(|name| resolved_ui_callers(artifacts, name, &mut BTreeSet::new()))
+            .unwrap_or_default();
 
         if callers.is_empty() {
             let mut source_paths = BTreeSet::new();
@@ -245,9 +251,7 @@ fn flow_candidates_for_endpoint(
         for caller in callers {
             let mut source_paths = BTreeSet::new();
             let mut related_tests = BTreeSet::new();
-            if let Some(path) = caller.source_path.as_ref() {
-                source_paths.insert(path.clone());
-            }
+            source_paths.extend(caller.source_paths.clone());
             if let Some(path) = wrapper.source_path.as_ref() {
                 source_paths.insert(path.clone());
             }
@@ -267,12 +271,8 @@ fn flow_candidates_for_endpoint(
                 related_tests.insert(test.clone());
             }
             candidates.push(FlowCandidate {
-                component_name: caller
-                    .data
-                    .get("component")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
-                component_path: caller.source_path.clone(),
+                component_name: caller.component_name.clone(),
+                component_path: caller.component_path.clone(),
                 line_start: caller.line_start.or(wrapper.line_start),
                 wrapper_index: *wrapper_index,
                 transport_index,
@@ -282,7 +282,7 @@ fn flow_candidates_for_endpoint(
         }
     }
 
-    candidates
+    dedupe_candidates(candidates)
 }
 
 fn canonical_candidate(
@@ -592,6 +592,133 @@ fn path_aliases(normalized_path: &str) -> Vec<String> {
         aliases.insert(alias);
     }
     aliases.into_iter().collect()
+}
+
+fn resolved_ui_callers(
+    artifacts: &[ArtifactDoc],
+    hook_name: &str,
+    visited: &mut BTreeSet<String>,
+) -> Vec<CallerEvidence> {
+    if !visited.insert(hook_name.to_owned()) {
+        return Vec::new();
+    }
+
+    let uses: Vec<&ArtifactDoc> = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact.kind == "frontend_hook_use"
+                && artifact.data.get("hook_def_name").and_then(Value::as_str) == Some(hook_name)
+        })
+        .collect();
+
+    let mut callers = Vec::new();
+    for caller in uses {
+        let component_name = caller
+            .data
+            .get("component")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| infer_component_name(artifacts, caller.source_path.as_deref()));
+
+        if let Some(name) = component_name
+            .as_deref()
+            .filter(|name| name.starts_with("use"))
+        {
+            let nested = resolved_ui_callers(artifacts, name, visited);
+            if nested.is_empty() {
+                callers.push(caller_evidence(component_name, caller));
+            } else {
+                for mut evidence in nested {
+                    if let Some(path) = caller.source_path.as_ref() {
+                        evidence.source_paths.insert(path.clone());
+                    }
+                    for test in &caller.related_tests {
+                        evidence.related_tests.insert(test.clone());
+                    }
+                    callers.push(evidence);
+                }
+            }
+        } else {
+            callers.push(caller_evidence(component_name, caller));
+        }
+    }
+
+    visited.remove(hook_name);
+    dedupe_callers(callers)
+}
+
+fn caller_evidence(component_name: Option<String>, caller: &ArtifactDoc) -> CallerEvidence {
+    let mut source_paths = BTreeSet::new();
+    if let Some(path) = caller.source_path.as_ref() {
+        source_paths.insert(path.clone());
+    }
+    CallerEvidence {
+        component_name,
+        component_path: caller.source_path.clone(),
+        line_start: caller.line_start,
+        source_paths,
+        related_tests: caller.related_tests.iter().cloned().collect(),
+    }
+}
+
+fn infer_component_name(artifacts: &[ArtifactDoc], source_path: Option<&str>) -> Option<String> {
+    let source_path = source_path?;
+    let matches: BTreeSet<String> = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact.kind == "frontend_component"
+                && artifact.source_path.as_deref() == Some(source_path)
+        })
+        .filter_map(|artifact| artifact.name.clone())
+        .collect();
+    if matches.len() == 1 {
+        matches.into_iter().next()
+    } else {
+        None
+    }
+}
+
+fn dedupe_callers(callers: Vec<CallerEvidence>) -> Vec<CallerEvidence> {
+    let mut by_key: BTreeMap<(Option<String>, Option<String>), CallerEvidence> = BTreeMap::new();
+    for caller in callers {
+        let key = (caller.component_name.clone(), caller.component_path.clone());
+        by_key
+            .entry(key)
+            .and_modify(|existing| {
+                existing.source_paths.extend(caller.source_paths.clone());
+                existing.related_tests.extend(caller.related_tests.clone());
+                if existing.line_start.is_none() {
+                    existing.line_start = caller.line_start;
+                }
+            })
+            .or_insert(caller);
+    }
+    by_key.into_values().collect()
+}
+
+fn dedupe_candidates(candidates: Vec<FlowCandidate>) -> Vec<FlowCandidate> {
+    let mut by_key: BTreeMap<(usize, Option<String>, Option<String>), FlowCandidate> =
+        BTreeMap::new();
+    for candidate in candidates {
+        let key = (
+            candidate.wrapper_index,
+            candidate.component_name.clone(),
+            candidate.component_path.clone(),
+        );
+        by_key
+            .entry(key)
+            .and_modify(|existing| {
+                existing.source_paths.extend(candidate.source_paths.clone());
+                existing
+                    .related_tests
+                    .extend(candidate.related_tests.clone());
+                if existing.line_start.is_none() {
+                    existing.line_start = candidate.line_start;
+                }
+            })
+            .or_insert(candidate);
+    }
+    by_key.into_values().collect()
 }
 
 impl EndpointRecord {

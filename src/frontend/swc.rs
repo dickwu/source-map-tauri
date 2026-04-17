@@ -3,8 +3,9 @@ use std::{collections::BTreeSet, path::Path};
 use anyhow::{anyhow, Result};
 use swc_common::{sync::Lrc, FileName, SourceMap, Span, Spanned};
 use swc_ecma_ast::{
-    ArrowExpr, CallExpr, Callee, Decl, EsVersion, Expr, FnDecl, Function, Lit, MemberExpr,
-    MemberProp, Module, ModuleDecl, ModuleItem, NewExpr, Pat, VarDecl, VarDeclarator,
+    ArrowExpr, CallExpr, Callee, Decl, DefaultDecl, EsVersion, ExportDefaultDecl, Expr, FnDecl,
+    Function, Lit, MemberExpr, MemberProp, Module, ModuleDecl, ModuleItem, NewExpr, Pat, VarDecl,
+    VarDeclarator,
 };
 use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 use swc_ecma_visit::{Visit, VisitWith};
@@ -540,6 +541,18 @@ impl SwcCollector<'_> {
 }
 
 impl Visit for SwcCollector<'_> {
+    fn visit_export_default_decl(&mut self, export_default: &ExportDefaultDecl) {
+        if let DefaultDecl::Fn(fn_expr) = &export_default.decl {
+            if let Some(ident) = &fn_expr.ident {
+                self.push_named_function(ident.sym.to_string());
+                fn_expr.function.visit_children_with(self);
+                self.pop_named_function();
+                return;
+            }
+        }
+        export_default.visit_children_with(self);
+    }
+
     fn visit_fn_decl(&mut self, fn_decl: &FnDecl) {
         self.push_named_function(fn_decl.ident.sym.to_string());
         fn_decl.function.visit_with(self);
